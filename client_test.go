@@ -2,40 +2,14 @@ package blackbox
 
 import (
 	"context"
-	"encoding/xml"
-	"io/ioutil"
+	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func defaultHandler(response string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		bb, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			return
-		}
-
-		defer r.Body.Close()
-
-		body, err := url.PathUnescape(string(bb))
-		if err != nil {
-			return
-		}
-
-		sendSmsReq := &SendSMSRequest{}
-		err = xml.Unmarshal([]byte(body), sendSmsReq)
-		if err != nil {
-			return
-		}
-
-		if len(sendSmsReq.Messages) == 0 {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-
 		w.Write([]byte(response))
 	}
 }

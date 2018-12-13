@@ -10,14 +10,15 @@ import (
 	"net/url"
 )
 
-type Error struct {
-	HttpStatus  int
-	RawResponse string
-}
+const (
+	StatusFailed    = "FAILED"
+	StatusScheduled = "SCHEDULED"
+	StatusSent      = "SENT"
+	StatusRejected  = "REJECTED"
+	StatusSuccess   = "SUCCESS"
 
-func (e Error) Error() string {
-	return e.RawResponse
-}
+	StatusDescriptionOk = "OK"
+)
 
 type client struct {
 	url        string
@@ -35,66 +36,24 @@ func NewClient(url, key, signature string, httpClient *http.Client) Client {
 	}
 }
 
-type Message struct {
-	Recipient string `xml:"recipient"`
-	Message   string `xml:"message"`
-	Sender    string `xml:"sender"`
-	Keyword   string `xml:"keyword"`
-}
-
-type SendSMSRequest struct {
-	XMLName  string    `xml:"request"`
-	Messages []Message `xml:"sms"`
-}
-
-type SendSMSResponse struct {
-	Response struct {
-		Status struct {
-			Code        string `json:"code"`
-			Type        string `json:"type"`
-			Description string `json:"description"`
-			Meta        string `json:"meta"`
-		} `json:"status"`
-		Content struct {
-			Description string `json:"description"`
-			Messages    struct {
-				Message string `json:"message"`
-				Request struct {
-					Sms []struct {
-						Event             string `json:"event"`
-						Recipient         string `json:"recipient"`
-						Message           string `json:"message"`
-						Sender            string `json:"sender"`
-						Keyword           string `json:"keyword,omitempty"`
-						Reference         string `json:"reference"`
-						Status            string `json:"status"`
-						StatusDescription string `json:"status_description"`
-						Date              string `json:"date"`
-						ScheduledDate     string `json:"scheduled_date,omitempty"`
-					} `json:"sms"`
-				} `json:"request"`
-			} `json:"messages"`
-		} `json:"content"`
-	}
-}
-
 type Client interface {
 	SendSMS(ctx context.Context, req *SendSMSRequest) (*SendSMSResponse, error)
 }
 
-func (c *client) SendSMS(ctx context.Context, req *SendSMSRequest) (*SendSMSResponse, error) {
-	if req == nil {
+func (c *client) SendSMS(ctx context.Context, msgReq *SendSMSRequest) (*SendSMSResponse, error) {
+	if msgReq == nil {
 		return nil, nil
 	}
 
-	reqXML, err := xml.Marshal(req)
+	msgXML, err := xml.Marshal(msgReq)
 	if err != nil {
 		return nil, err
 	}
 
-	q := url.QueryEscape(string(reqXML))
+	vals := url.Values{}
+	vals.Add("messages", string(msgXML))
 
-	ret, err := c.roundTrip(ctx, http.MethodPost, "/send_sms", nil, []byte(q))
+	ret, err := c.postUrlEncoded(ctx, "/send_sms", vals)
 	if err != nil {
 		return nil, err
 	}
@@ -108,18 +67,22 @@ func (c *client) SendSMS(ctx context.Context, req *SendSMSRequest) (*SendSMSResp
 	return resp, nil
 }
 
-func (c *client) roundTrip(ctx context.Context, method, path string, query url.Values, body []byte) (ret []byte, err error) {
+func (c *client) postUrlEncoded(ctx context.Context, path string, vals url.Values) (ret []byte, err error) {
 	u, err := url.Parse(c.url + path)
 	if err != nil {
 		return
 	}
-	u.RawQuery = query.Encode()
 
-	req, err := http.NewRequest(method, u.String(), bytes.NewBuffer(body))
+	vals.Add("api_key", c.key)
+	vals.Add("api_signature", c.signature)
+	vals.Add("api_format", "JSON")
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer([]byte(vals.Encode())))
 	if err != nil {
 		return
 	}
 
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	if ctx != nil {
 		req = req.WithContext(ctx)
 	}
