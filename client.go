@@ -21,17 +21,23 @@ const (
 )
 
 type client struct {
-	url        string
-	key        string
-	signature  string
+	config     ClientConfig
 	httpClient *http.Client
 }
 
-func NewClient(url, key, signature string, httpClient *http.Client) Client {
+type ClientConfig struct {
+	URL       string
+	Key       string
+	Signature string
+}
+
+func NewClient(cfg ClientConfig, httpClient *http.Client) Client {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	return &client{
-		url:        url,
-		key:        key,
-		signature:  signature,
+		config:     cfg,
 		httpClient: httpClient,
 	}
 }
@@ -68,13 +74,13 @@ func (c *client) SendSMS(ctx context.Context, msgReq *SendSMSRequest) (*SendSMSR
 }
 
 func (c *client) postUrlEncoded(ctx context.Context, path string, vals url.Values) (ret []byte, err error) {
-	u, err := url.Parse(c.url + path)
+	u, err := url.Parse(c.config.URL + path)
 	if err != nil {
 		return
 	}
 
-	vals.Add("api_key", c.key)
-	vals.Add("api_signature", c.signature)
+	vals.Add("api_key", c.config.Key)
+	vals.Add("api_signature", c.config.Signature)
 	vals.Add("api_format", "JSON")
 
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer([]byte(vals.Encode())))
